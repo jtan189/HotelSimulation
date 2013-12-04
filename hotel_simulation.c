@@ -35,7 +35,7 @@ sem_t room_available, can_modify_room;
 // reservation consists of guest ID and room number
 struct reservation
 {
-    int	guest_id;
+    int guest_id;
     int room_num;
 };
 
@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     thread_error = pthread_create(&check_in_res, &attr, check_in_activity, (void *)TOTAL_GUESTS);
     if (thread_error)
     {
-	printf("Error create check-in reservationist.\n");
+	printf("Error creating check-in reservationist.\n");
 	exit(EXIT_FAILURE);
     }
 
@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
     thread_error = pthread_create(&check_out_res, &attr, check_out_activity, (void *)TOTAL_GUESTS);
     if (thread_error)
     {
-	printf("Error create check-out reservationist.\n");
+	printf("Error creating check-out reservationist.\n");
 	exit(EXIT_FAILURE);
     }
 
