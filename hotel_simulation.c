@@ -33,14 +33,17 @@ sem_t guest_at_check_out, res_calc_balance, guest_pay_balance;
 sem_t room_available, can_modify_room;
 
 // reservation consists of guest ID and room number
-struct reservation
+typedef struct
 {
     int guest_id;
     int room_num;
-};
+} reservation;
 
-// guest reservation being processed
-struct reservation guest_reservation;
+// guest reservation being processed by check-in reservationist
+reservation check_in_reservation;
+
+// guest reservation being processed by check-out reservationist
+reservation check_out_reservation;
 
 // room availability
 int rooms[TOTAL_ROOMS];
@@ -54,9 +57,21 @@ int main(int argc, char *argv[])
 
     int thread_error, guest_id, join_status;
 
+    printf("Hotel simulation starting...\n");
+
     // initalize semaphores
-    sem_init(&check_in_res_avail, SEM_SHARED, 1); // 1 = mutual-exclusion
+    sem_init(&check_in_res_avail, SEM_SHARED, 1); // 1 = mutual exclusion
     sem_init(&check_out_res_avail, SEM_SHARED, 1);
+    sem_init(&can_modify_room, SEM_SHARED, 1);
+    sem_init(&guest_at_check_in, SEM_SHARED, 0); // 0 = event ordering
+    sem_init(&res_assigned_room, SEM_SHARED, 0);
+    sem_init(&guest_at_check_out, SEM_SHARED, 0);
+    sem_init(&res_calc_balance, SEM_SHARED, 0);
+    sem_init(&guest_pay_balance, SEM_SHARED, 0);
+    sem_init(&room_available, SEM_SHARED, TOTAL_ROOMS); // limit concurrent reservations
+
+    // initially, all rooms vacant
+    rooms = {0};
 
     // initialize and set thread detached attribute for reservationist threads
     pthread_attr_init(&attr);
@@ -93,7 +108,6 @@ int main(int argc, char *argv[])
 	    exit(EXIT_FAILURE);
 	}
 
-	// use sem_wait(&empty) and sem_post(&full);
     }
 
     // wait for all guests to check out
@@ -105,21 +119,60 @@ int main(int argc, char *argv[])
     }
 
     sleep(1.5); // testing purposes
-    printf("Program finished.\n");
+    printf("Hotel simulation finished.\n");
     exit(EXIT_SUCCESS);
 }
 
 void *guest_activity(void *cust_id)
 {
     printf("Guest %d, ready to throw down!\n", (int)cust_id + 1);
+
+    // wait for check-in reservationist to become available
+    sem_wait(&check_in_res_avail);
+
     pthread_exit(NULL);
 }
 
 void *check_in_activity(void *total_guests)
 {
-    int guest_processed;
-    printf("Hi, welcome to Nocturnal Ned's!\n");
+    int guests_processed = 0;
+
+    while(guests_processed < TOTAL_GUESTS)
+    {
+	int room_num;
+
+	// wait for guest to arrive before greeting
+	sem_wait(&guest_at_check_in);
+	printf("The check-in reservationist greets Guest %d.", check_in_reservation->guest_id);
+
+	// find available room and asign to guest
+	sem_wait(&can_modify_room);
+	room_num = get_avail_room();
+	printf("Assign room %d to Guest %d.", room_num, check_in_reservation->guest_id);
+
+	// signal availablility to new guests
+	sem_post(&check_in_res_avail);
+
+    }
+    
+
     pthread_exit(NULL);
+}
+
+int get_avail_room()
+{
+    // figure out wait order for can_modify_room and room_available
+    int i;
+    // get first available room
+    for(i = 0; i < TOTAL_ROOMS; i++)
+    {
+	if (rooms[i] == 0)
+	{
+	    break;
+	}
+    }
+
+    return i + 1;
 }
 
 void *check_out_activity(void *total_guests)
