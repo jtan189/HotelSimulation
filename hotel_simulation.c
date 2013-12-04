@@ -32,6 +32,19 @@ sem_t guest_at_check_out, res_calc_balance, guest_pay_balance;
 // limit available rooms and concurrent modification of room status
 sem_t room_available, can_modify_room;
 
+// reservation consists of guest ID and room number
+struct reservation
+{
+    int	guest_id;
+    int room_num;
+};
+
+// guest reservation being processed
+struct reservation guest_reservation;
+
+// room availability
+int rooms[TOTAL_ROOMS];
+
 int main(int argc, char *argv[])
 {
     pthread_t guests[TOTAL_GUESTS];
@@ -68,6 +81,8 @@ int main(int argc, char *argv[])
     // free attribute
     pthread_attr_destroy(&attr);
 
+    sleep(.5); // testing purposes
+
     // create guests
     for (guest_id = 0; guest_id < TOTAL_GUESTS; guest_id++)
     {
@@ -89,8 +104,9 @@ int main(int argc, char *argv[])
 	exit(EXIT_FAILURE);
     }
 
+    sleep(1.5); // testing purposes
     printf("Program finished.\n");
-//    exit(EXIT_SUCCESS);
+    exit(EXIT_SUCCESS);
 }
 
 void *guest_activity(void *cust_id)
@@ -108,6 +124,7 @@ void *check_in_activity(void *total_guests)
 
 void *check_out_activity(void *total_guests)
 {
+    sleep(1); // testing purposes
     printf("Thanks for staying at Nocturnal Ned's!\n");
     pthread_exit(NULL);
 }
