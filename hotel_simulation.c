@@ -1,12 +1,13 @@
 /*
-  JOSH Tan
+  Josh Tan
   CSCI 474
   Project 2: Hotel Simulation
-  12/6/13
+  12/5/13
 
   Resources:
-  http://stackoverflow.com/questions/822323/how-to-generate-a-random-number-in-c
   http://stackoverflow.com/questions/2999075/generate-a-random-number-within-range/2999130#2999130
+  http://stackoverflow.com/questions/6161322/using-stdlibs-rand-from-multiple-threads/6161357#6161357
+  http://linux.die.net/man/3/rand_r
 */
 
 #include <stdio.h>
@@ -70,11 +71,7 @@ int main(int argc, char *argv[])
     pthread_attr_t attr;
     int thread_error, guest_id, join_status, check_in_res_id, check_out_res_id;
 
-    // seed random number generator to use as seed for
-    // thread random number generator seed (using nrand48)
-    //srand(time(NULL));
-
-    // initailize action counts
+    // initialize action counts
     pool_count = 0;
     rest_count = 0;
     fit_count = 0;
@@ -127,7 +124,6 @@ int main(int argc, char *argv[])
 	    printf("Error creating guest %d.\n", guest_id);
 	    exit(EXIT_FAILURE);
 	}
-
     }
 
     // wait for all guests to check out
@@ -154,16 +150,14 @@ int main(int argc, char *argv[])
   Activities performed by guests.
   Includes checking in, performing an action within the hotel, and checking out.
 
-  http://man7.org/linux/man-pages/man3/drand48_r.3.html
-  http://linux.about.com/library/cmd/blcmdl3_nrand48.htm
-  http://stackoverflow.com/questions/6161322/using-stdlibs-rand-from-multiple-threads?lq=1
+  Resources:
+  http://linux.die.net/man/3/rand_r
  */
 void *guest_activity(void *guest_id)
 {
     int assigned_room_num, action_choice, action_duration;
     float balance_due;
-    /* struct drand48_data *seed_buffer; */
-    /* double *rand_num; */
+    unsigned int seedp; // seed for rand_r
 
     // wait for check-in reservationist to become available
     sem_wait(&check_in_res_avail);
@@ -182,17 +176,7 @@ void *guest_activity(void *guest_id)
     sem_post(&check_in_res_avail);
 
     // randomly perform an action within the hotel, for a random amount of time
-    //seed48_r((short unsigned int *)guest_id, seed_buffer); // seed using rand()
-    //seed48_r((short unsigned int *)rand(), seed_buffer); // seed using rand()
-    //drand48_r(seed_buffer, rand_num);
-    //action_choice = (int)(*rand_num / 0.25);
-    
-    action_duration = 1;
-    //drand48_r(seed_buffer, rand_num);
-    //action_duration = ((int)(*rand_num / ((double)1/(double)3)) + 1);
-
-    //srand(time(NULL)); // seed random number
-    unsigned int seedp = (int)time(NULL) + (int)guest_id;
+    seedp = (int)time(NULL) + (int)guest_id; // seed is combination of current time and guest_id
     action_choice = rand_lim(3, &seedp);
     action_duration = rand_lim(MAX_SLEEP - 1, &seedp) + 1;
 
@@ -248,7 +232,9 @@ void *guest_activity(void *guest_id)
  */
 void *check_in_activity(void *check_in_res_id)
 {
-    int guests_processed = 0;
+    int guests_processed;
+
+    guests_processed = 0;
 
     // check-in TOTAL_GUESTS number of guests
     while(guests_processed < TOTAL_GUESTS)
@@ -307,7 +293,10 @@ int get_avail_room()
  */
 void *check_out_activity(void *check_out_res_id)
 {
-    int guests_processed = 0;
+    int guests_processed;
+    float balance_due;
+
+    guests_processed = 0;
 
     // check-out TOTAL_GUESTS number of guests
     while(guests_processed < TOTAL_GUESTS)
@@ -317,40 +306,44 @@ void *check_out_activity(void *check_out_res_id)
 	printf("CHECK-OUT: The check-out reservationist greets Guest %d and receives the key for Room %d.\n", 
 	       check_out_reservation.guest_id, check_out_reservation.room_num);
 
+	// calculate guest's balance
 	printf("CHECK-OUT: Calculate the balance for Guest %d.\n", check_out_reservation.guest_id);
-	float balance_due = check_out_reservation.duration * HOTEL_RATE;
+	balance_due = check_out_reservation.duration * HOTEL_RATE;
 	check_out_reservation.balance = balance_due;
 	sem_post(&res_calc_balance);
+
+	// wait for guest to pay balance before completing check-out
 	sem_wait(&guest_pay_balance);
 	printf("CHECK-OUT: Receive $%.2f from Guest %d and complete the check-out.\n",
 	       balance_due,check_out_reservation.guest_id);
-
-	sem_wait(&can_modify_room);
+	sem_wait(&can_modify_room); // lock room status modification during check-out
 	room_occupancy[check_out_reservation.room_num] = 0;
 	sem_post(&can_modify_room);
-	
 	sem_post(&room_available);
 
 	// signal availablility to new guests
 	sem_post(&check_out_res_avail);
 
 	guests_processed++;
-
     }
 
     pthread_exit(NULL);
 }
 
 /*
- * Return a random number between 0 and limit, inclusive.
- *
- * Source:
- * http://stackoverflow.com/questions/2999075/generate-a-random-number-within-range/2999130#2999130
+  Return a random number between 0 and limit, inclusive. Modified existing rand_lim function
+  from resource link to incorporate a rand_r (thread-safe version of rand).
+ 
+  Resources:
+  http://stackoverflow.com/questions/2999075/generate-a-random-number-within-range/2999130#2999130
+  http://linux.die.net/man/3/rand_r
  */
 int rand_lim(int limit, unsigned int *seedp) {
 
-    int divisor = RAND_MAX/(limit+1);
+    int divisor;
     int retval;
+
+    divisor = RAND_MAX / (limit + 1);
 
     do { 
         retval = rand_r(seedp) / divisor;
